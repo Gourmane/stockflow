@@ -4,12 +4,20 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class CategoryTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+    }
 
     // GET all categories
     public function test_can_list_categories(): void
@@ -19,7 +27,7 @@ class CategoryTest extends TestCase
         $response = $this->getJson('/api/categories');
 
         $response->assertOk()
-                 ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data');
     }
 
     // GET category by ID
@@ -30,7 +38,7 @@ class CategoryTest extends TestCase
         $response = $this->getJson("/api/categories/{$category->id}");
 
         $response->assertOk()
-                 ->assertJsonPath('data.name', 'Imprimantes');
+            ->assertJsonPath('data.name', 'Imprimantes');
     }
 
     // POST create category
@@ -41,7 +49,7 @@ class CategoryTest extends TestCase
         ]);
 
         $response->assertCreated()
-                 ->assertJsonPath('data.name', 'Serveurs');
+            ->assertJsonPath('data.name', 'Serveurs');
 
         $this->assertDatabaseHas('categories', [
             'name' => 'Serveurs',
@@ -58,7 +66,7 @@ class CategoryTest extends TestCase
         ]);
 
         $response->assertUnprocessable()
-                 ->assertJsonValidationErrors(['name']);
+            ->assertJsonValidationErrors(['name']);
 
         $this->assertDatabaseCount('categories', 1);
     }
@@ -73,7 +81,7 @@ class CategoryTest extends TestCase
         ]);
 
         $response->assertOk()
-                 ->assertJsonPath('data.name', 'Ordinateurs');
+            ->assertJsonPath('data.name', 'Ordinateurs');
 
         $this->assertDatabaseHas('categories', [
             'id' => $category->id,
@@ -104,7 +112,7 @@ class CategoryTest extends TestCase
         ]);
 
         $response->assertUnprocessable()
-                 ->assertJsonValidationErrors(['name']);
+            ->assertJsonValidationErrors(['name']);
     }
 
     // DELETE empty category
@@ -152,5 +160,15 @@ class CategoryTest extends TestCase
         $response = $this->getJson('/api/categories/99999');
 
         $response->assertNotFound();
+    }
+
+    public function test_rejects_a_category_name_that_exceeds_the_storage_limit(): void
+    {
+        $response = $this->postJson('/api/categories', ['name' => str_repeat('A', 101)]);
+
+        $this->assertDatabaseEmpty('categories');
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['name']);
     }
 }
