@@ -52,20 +52,18 @@ class StoreProductRequest extends FormRequest
                 'nullable',
                 'numeric',
                 'min:0',
+                'max:9999999999.99',
+                'decimal:0,2',
             ],
 
-            'quantity' => [
-                'sometimes',
-                'required',
-                'integer',
-                'min:0',
-            ],
+            'quantity' => ['missing'],
 
             'min_stock' => [
                 'sometimes',
                 'required',
                 'integer',
                 'min:0',
+                'max:4294967295',
             ],
 
             'is_active' => [

@@ -26,15 +26,12 @@ class ProductController extends Controller
      */
     public function store(StoreProductRequest $request): JsonResponse
     {
-        $product = Product::create(
-            $request->validated()
-        );
+        $product = Product::create($request->validated());
 
-        $product->load('category');
+        $product->refresh()->load('category');
 
         return response()->json([
-            'message' => 'Product created successfully',
-            'data' => $product,
+         'data' => $product,
         ], 201);
     }
 
@@ -70,10 +67,16 @@ class ProductController extends Controller
      */
     public function destroy(Product $product): JsonResponse
     {
-        $product->delete();
+     if ($product->stockMovements()->exists()) {
+            return response()->json([
+             'message' => 'Cannot delete product because it has stock movement history.',
+          ], 409);
+     }
 
-        return response()->json([
-            'message' => 'Product deleted successfully',
-        ], 200);
+      $product->delete();
+
+      return response()->json([
+         'message' => 'Product deleted successfully',
+     ], 200);
     }
 }
