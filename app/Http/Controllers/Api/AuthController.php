@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
@@ -31,28 +32,32 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $token = $user->createToken('stockflow-api')->plainTextToken;
+        Auth::guard('web')->login($user);
+
+        $request->session()->regenerate();
 
         return response()->json([
             'message' => 'Login successful',
             'user' => $user,
-            'token' => $token,
         ]);
     }
 
     public function logout(Request $request): JsonResponse
     {
-      $request->user()->currentAccessToken()->delete();
+        Auth::guard('web')->logout();
 
-     return response()->json([
-          'message' => 'Logout successful'
-      ], 200);
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json([
+            'message' => 'Logout successful',
+        ], 200);
     }
 
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => $request->user()
+            'user' => $request->user(),
         ], 200);
     }
 }

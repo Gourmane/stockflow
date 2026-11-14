@@ -79,7 +79,9 @@ class UserController extends Controller
             $user->save();
 
             if (!$user->is_active) {
-                $user->tokens()->delete();
+                DB::table('sessions')
+                    ->where('user_id', $user->id)
+                    ->delete();
             }
         });
 
