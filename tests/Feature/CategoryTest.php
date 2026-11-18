@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
-use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -16,7 +15,7 @@ class CategoryTest extends TestCase
     {
         parent::setUp();
 
-        $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
     }
 
     // GET all categories
@@ -115,43 +114,29 @@ class CategoryTest extends TestCase
             ->assertJsonValidationErrors(['name']);
     }
 
-    // DELETE empty category
-    public function test_can_delete_empty_category(): void
+    public function test_returns_405_and_preserves_an_empty_category(): void
     {
         $category = Category::create(['name' => 'Accessoires']);
 
-        $response = $this->deleteJson("/api/categories/{$category->id}");
+        $this->deleteJson("/api/categories/{$category->id}")
+            ->assertMethodNotAllowed()
+            ->assertJsonStructure(['message']);
 
-        $response->assertOk();
-
-        $this->assertDatabaseMissing('categories', [
-            'id' => $category->id,
-        ]);
+        $this->assertModelExists($category);
     }
 
-    // DELETE category containing products
-    public function test_cannot_delete_category_with_products(): void
+    public function test_returns_405_and_preserves_a_category_with_products(): void
     {
         $category = Category::create(['name' => 'Ordinateurs']);
 
-        Product::create([
-            'category_id' => $category->id,
-            'sku' => 'PC-001',
-            'name' => 'Dell Laptop',
-            'brand' => 'Dell',
-            'unit_price' => 5000,
-            'quantity' => 5,
-            'min_stock' => 2,
-            'is_active' => true,
-        ]);
+        $product = $this->createProduct($category);
 
-        $response = $this->deleteJson("/api/categories/{$category->id}");
+        $this->deleteJson("/api/categories/{$category->id}")
+            ->assertMethodNotAllowed()
+            ->assertJsonStructure(['message']);
 
-        $response->assertStatus(409);
-
-        $this->assertDatabaseHas('categories', [
-            'id' => $category->id,
-        ]);
+        $this->assertModelExists($category);
+        $this->assertModelExists($product);
     }
 
     // GET category not found

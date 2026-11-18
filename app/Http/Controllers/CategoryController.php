@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreCategoryRequest;
-use App\Models\Category;
 use App\Http\Requests\UpdateCategoryRequest;
+use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 
 class CategoryController extends Controller
@@ -17,8 +17,8 @@ class CategoryController extends Controller
         $categories = Category::all();
 
         return response()->json([
-         'data' => $categories,
-     ], 200);
+            'data' => $categories,
+        ], 200);
     }
 
     /**
@@ -40,38 +40,20 @@ class CategoryController extends Controller
     public function show(Category $category): JsonResponse
     {
         return response()->json([
-         'data' => $category,
+            'data' => $category,
         ], 200);
     }
 
     /**
      * Update the specified resource in storage.
      */
-public function update(UpdateCategoryRequest $request, Category $category): JsonResponse
+    public function update(UpdateCategoryRequest $request, Category $category): JsonResponse
     {
         $category->update($request->validated());
 
         return response()->json([
             'message' => 'Category updated successfully',
-         'data' => $category,
+            'data' => $category,
         ], 200);
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Category $category): JsonResponse
-    {
-        if ($category->products()->exists()) {
-         return response()->json([
-             'message' => 'Cannot delete category because it contains products.',
-         ], 409);
-     }
-
-     $category->delete();
-
-     return response()->json([
-         'message' => 'Category deleted successfully',
-          ], 200);
     }
 }

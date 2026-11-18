@@ -3,11 +3,12 @@
 use App\Models\Category;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Arr;
 
 pest()->use(RefreshDatabase::class);
 
 it('creates a product with its category and zero stock as an admin', function () {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
     $category = Category::create(['name' => 'Accessories']);
 
     $response = $this->postJson('/api/products', [
@@ -30,7 +31,7 @@ it('creates a product with its category and zero stock as an admin', function ()
 });
 
 it('returns 422 when quantity is supplied on product creation', function (?int $quantity) {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
     $category = Category::create(['name' => 'Accessories']);
 
     $this->postJson('/api/products', [
@@ -51,7 +52,7 @@ it('returns 422 when quantity is supplied on product creation', function (?int $
 
 it('updates product details while preserving inventory', function (string $method) {
     $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
-    $this->authenticateApiAs($admin);
+    $this->actingAs($admin, 'web');
     $product = $this->createProduct();
     $openingMovement = $this->recordOpeningStock($product, $admin, 5);
 
@@ -67,37 +68,76 @@ it('updates product details while preserving inventory', function (string $metho
     $this->assertDatabaseCount('stock_movements', 1);
 })->with(['PUT', 'PATCH']);
 
-it('deletes a product without movement history', function () {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+it('returns 405 and preserves a product without movement history', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
     $product = $this->createProduct();
 
-    $this->deleteJson("/api/products/{$product->id}")->assertOk();
+    $this->deleteJson("/api/products/{$product->id}")
+        ->assertMethodNotAllowed()
+        ->assertJsonStructure(['message']);
 
-    $this->assertModelMissing($product);
+    $this->assertModelExists($product);
     $this->assertModelExists($product->category);
 });
 
-it('returns a JSON 409 when deleting a product with movement history', function () {
+it('returns 405 and preserves a product with movement history', function () {
     $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
-    $this->authenticateApiAs($admin);
+    $this->actingAs($admin, 'web');
     $product = $this->createProduct();
     $movement = $this->recordOpeningStock($product, $admin, 5);
 
-    $response = $this->deleteJson("/api/products/{$product->id}");
+    $this->deleteJson("/api/products/{$product->id}")
+        ->assertMethodNotAllowed()
+        ->assertJsonStructure(['message']);
 
     $this->assertModelExists($product);
-    $this->assertModelExists($movement);
-    $response->assertConflict()->assertJsonStructure(['message']);
+    $this->assertDatabaseHas('stock_movements', $movement->getAttributes());
 });
 
+it('allows an admin to deactivate and reactivate a product while preserving data and movement history', function (string $method) {
+    $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
+    $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
+    $product = $this->createProduct();
+    $movement = $this->recordOpeningStock($product, $admin, 5);
+    $productData = Arr::except($product->refresh()->getAttributes(), ['is_active', 'updated_at']);
+    $path = "/api/products/{$product->id}";
+
+    $this->actingAs($admin, 'web')->json($method, $path, ['is_active' => false])
+        ->assertOk()
+        ->assertJsonPath('data.is_active', false);
+    $this->assertDatabaseHas('products', $productData + ['is_active' => false]);
+
+    $this->actingAs($employee, 'web');
+    $this->getJson('/api/products')
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $product->id);
+    $this->getJson($path)
+        ->assertOk()
+        ->assertJsonPath('data.id', $product->id)
+        ->assertJsonPath('data.category.id', $product->category_id)
+        ->assertJsonPath('data.quantity', 5);
+    $this->getJson('/api/stock-movements')
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $movement->id)
+        ->assertJsonPath('data.0.product.id', $product->id);
+    $this->assertDatabaseHas('stock_movements', $movement->getAttributes());
+
+    $this->actingAs($admin, 'web')->json($method, $path, ['is_active' => true])
+        ->assertOk()
+        ->assertJsonPath('data.is_active', true);
+    $this->assertDatabaseHas('products', $productData + ['is_active' => true]);
+    $this->assertDatabaseHas('stock_movements', $movement->getAttributes());
+    $this->assertDatabaseCount('stock_movements', 1);
+})->with(['PUT', 'PATCH']);
+
 it('returns 404 for a missing product', function () {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
 
     $this->getJson('/api/products/99999')->assertNotFound()->assertJsonStructure(['message']);
 });
 
 it('returns 422 when required product fields are missing', function () {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
 
     $this->postJson('/api/products')
         ->assertUnprocessable()
@@ -107,7 +147,7 @@ it('returns 422 when required product fields are missing', function () {
 });
 
 it('returns 422 for a duplicate SKU, missing category and invalid stock values', function () {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
     $product = $this->createProduct();
 
     $this->postJson('/api/products', [
@@ -125,7 +165,7 @@ it('returns 422 for a duplicate SKU, missing category and invalid stock values',
 
 it('returns 422 for a direct stock quantity edit and persists none of the changes', function (string $method, ?int $quantity) {
     $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
-    $this->authenticateApiAs($admin);
+    $this->actingAs($admin, 'web');
     $product = $this->createProduct();
     $openingMovement = $this->recordOpeningStock($product, $admin, 5);
 
