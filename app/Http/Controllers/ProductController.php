@@ -6,19 +6,29 @@ use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 class ProductController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $products = Product::with('category')->get();
+        $maxPerPage = 100;
+        $maxPage = intdiv(PHP_INT_MAX, $maxPerPage);
+        $pagination = Validator::make($request->query(), [
+            'page' => ['sometimes', 'required', 'integer', 'min:1', 'max:'.$maxPage],
+            'per_page' => ['sometimes', 'required', 'integer', 'min:1', 'max:'.$maxPerPage],
+        ])->validate();
 
-        return response()->json([
-            'data' => $products,
-        ], 200);
+        $products = Product::with('category')
+            ->orderBy('id')
+            ->paginate((int) ($pagination['per_page'] ?? 10), page: (int) ($pagination['page'] ?? 1))
+            ->appends($pagination);
+
+        return response()->json($products);
     }
 
     /**
