@@ -6,7 +6,6 @@ use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
@@ -21,6 +20,7 @@ class ProductController extends Controller
             'data' => $products,
         ], 200);
     }
+
     /**
      * Store a newly created resource in storage.
      */
@@ -31,7 +31,7 @@ class ProductController extends Controller
         $product->refresh()->load('category');
 
         return response()->json([
-         'data' => $product,
+            'data' => $product,
         ], 201);
     }
 
@@ -50,33 +50,15 @@ class ProductController extends Controller
     /**
      * Update the specified resource in storage.
      */
-   public function update(UpdateProductRequest $request,Product $product): JsonResponse 
-   {
+    public function update(UpdateProductRequest $request, Product $product): JsonResponse
+    {
         $product->update($request->validated());
 
         $product->load('category');
 
         return response()->json([
             'message' => 'Product updated successfully',
-                'data' => $product,
+            'data' => $product,
         ], 200);
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Product $product): JsonResponse
-    {
-     if ($product->stockMovements()->exists()) {
-            return response()->json([
-             'message' => 'Cannot delete product because it has stock movement history.',
-          ], 409);
-     }
-
-      $product->delete();
-
-      return response()->json([
-         'message' => 'Product deleted successfully',
-     ], 200);
     }
 }

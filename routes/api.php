@@ -35,11 +35,9 @@ Route::middleware(['auth:web', 'active'])->group(function () {
 
         Route::post('/products', [ProductController::class, 'store']);
         Route::match(['put', 'patch'], '/products/{product}', [ProductController::class, 'update']);
-        Route::delete('/products/{product}', [ProductController::class, 'destroy']);
 
         Route::post('/categories', [CategoryController::class, 'store']);
         Route::match(['put', 'patch'], '/categories/{category}', [CategoryController::class, 'update']);
-        Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
     });
 
     // User Management - Admin only

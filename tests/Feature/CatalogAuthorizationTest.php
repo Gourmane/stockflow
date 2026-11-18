@@ -7,7 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 pest()->use(RefreshDatabase::class);
 
 it('allows employees to read catalog listings and details', function () {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'employee', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'employee', 'is_active' => true]), 'web');
     $product = $this->createProduct();
 
     $this->getJson('/api/categories')
@@ -22,11 +22,16 @@ it('allows employees to read catalog listings and details', function () {
 
 it('returns 403 when an employee tries to write a product', function (string $method) {
     $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
-    $this->authenticateApiAs($employee);
+    $this->actingAs($employee, 'web');
     $product = $this->createProduct();
     $openingMovement = $this->recordOpeningStock($product, $employee, 4);
     $path = $method === 'POST' ? '/api/products' : "/api/products/{$product->id}";
-    $payload = ['name' => 'Replacement', 'category_id' => $product->category_id, 'sku' => 'REPLACEMENT'];
+    $payload = [
+        'name' => 'Replacement',
+        'category_id' => $product->category_id,
+        'sku' => 'REPLACEMENT',
+        'is_active' => false,
+    ];
 
     $this->json($method, $path, $payload)->assertForbidden();
 
@@ -37,13 +42,14 @@ it('returns 403 when an employee tries to write a product', function (string $me
         'sku' => $product->sku,
         'name' => $product->name,
         'quantity' => 4,
+        'is_active' => true,
     ]);
     $this->assertDatabaseHas('stock_movements', $openingMovement->getAttributes());
     $this->assertDatabaseCount('stock_movements', 1);
-})->with(['POST', 'PUT', 'PATCH', 'DELETE']);
+})->with(['POST', 'PUT', 'PATCH']);
 
 it('returns 403 when an employee tries to write a category', function (string $method) {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'employee', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'employee', 'is_active' => true]), 'web');
     $category = Category::create(['name' => 'Accessories']);
     $path = $method === 'POST' ? '/api/categories' : "/api/categories/{$category->id}";
 
@@ -51,4 +57,4 @@ it('returns 403 when an employee tries to write a category', function (string $m
 
     $this->assertDatabaseCount('categories', 1);
     $this->assertDatabaseHas('categories', ['id' => $category->id, 'name' => 'Accessories']);
-})->with(['POST', 'PUT', 'PATCH', 'DELETE']);
+})->with(['POST', 'PUT', 'PATCH']);
