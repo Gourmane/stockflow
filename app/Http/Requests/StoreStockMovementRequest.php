@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Services\StockMovementService;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreStockMovementRequest extends FormRequest
@@ -16,7 +17,7 @@ class StoreStockMovementRequest extends FormRequest
         return [
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'type' => ['required', 'in:in,out'],
-            'quantity' => ['required', 'integer', 'min:1','max:4294967295'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:'.StockMovementService::MAX_QUANTITY],
             'note' => ['nullable', 'string', 'max:1000'],
         ];
     }
