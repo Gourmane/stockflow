@@ -3,49 +3,58 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreEmployeeRequest;
+use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateEmployeeRequest;
 use App\Http\Requests\UpdateEmployeeStatusRequest;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
     // 1. List employees
     public function index(): JsonResponse
-{
-    $users = User::where('role', 'employee')
-        ->orderBy('name')
-        ->get([
-            'id',
-            'name',
-            'email',
-            'role',
-            'is_active',
-            'created_at'
-        ]);
-
-    return response()->json([
-        'data' => $users,
-    ], 200);
-}
-
-    // 2. Create employee
-    public function store(StoreEmployeeRequest $request): JsonResponse
     {
-        $data = $request->validated();
-
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => $data['password'],
-            'role' => 'employee',
-            'is_active' => true,
-        ]);
+        $users = User::where('role', 'employee')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'email',
+                'role',
+                'is_active',
+                'created_at',
+            ]);
 
         return response()->json([
-            'message' => 'Employee created successfully',
+            'data' => $users,
+        ], 200);
+    }
+
+    public function store(StoreUserRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $role = $data['role'] ?? 'employee';
+
+        try {
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => Hash::make($data['password']),
+                'role' => $role,
+                'is_active' => true,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages([
+                'email' => __('validation.unique', ['attribute' => 'email']),
+            ]);
+        }
+
+        return response()->json([
+            'message' => $role === 'admin' ? 'Admin created successfully' : 'Employee created successfully',
             'data' => $user,
         ], 201);
     }
@@ -78,7 +87,7 @@ class UserController extends Controller
             $user->is_active = $data['is_active'];
             $user->save();
 
-            if (!$user->is_active) {
+            if (! $user->is_active) {
                 DB::table('sessions')
                     ->where('user_id', $user->id)
                     ->delete();
