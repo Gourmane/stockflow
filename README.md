@@ -1,58 +1,49 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# StockFlow — Démarrage local
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Les commandes backend s'exécutent dans `backend/` et les commandes frontend dans `frontend/`, chacun dans son propre terminal.
 
-## About Laravel
+## Backend Laravel et MySQL
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Prévoyez PHP 8.5 avec l'extension `pdo_mysql`, Composer 2 et MySQL 8.0 à partir de la version 8.0.16. Vérifiez que `php -v` affiche PHP 8.5 dans votre terminal. Sous Windows, si vous utilisez Herd, ouvrez un nouveau terminal après avoir sélectionné cette version.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Si `vendor/` est absent, lancez `composer install`. Sur une première installation, copiez `.env.example` vers `.env` et lancez `php artisan key:generate` si la clé est vide.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Renseignez `DB_DATABASE`, `DB_USERNAME` et `DB_PASSWORD` avec le schéma de développement et son compte MySQL dédié. Les paramètres réseau et de session pour le développement local sont les suivants.
 
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```dotenv
+APP_URL=http://127.0.0.1:8000
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+SESSION_DRIVER=database
+SESSION_DOMAIN=null
+SANCTUM_STATEFUL_DOMAINS=127.0.0.1:5173,127.0.0.1:8000
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+```bash
+php -m
+php artisan migrate:status
+php artisan serve --host=127.0.0.1 --port=8000
+```
 
-## Contributing
+Vérifiez que `php -m` liste `pdo_mysql`. `migrate:status` consulte MySQL et indique quelles migrations ont été exécutées. Laravel stocke les sessions dans la table `sessions`, créée par `0001_01_01_000000_create_users_table`. Si la migration est en attente ou si la table manque, faites valider le schéma cible avant d'appliquer les migrations. Le script `composer setup` exécute des migrations et régénère la clé d'application.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Frontend React et Vite
 
-## Code of Conduct
+Utilisez Node.js 24 LTS et npm. Si `node_modules/` est absent, lancez `npm ci`. Dans `frontend/.env.local`, définissez la base des routes API, puis démarrez Vite.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```dotenv
+VITE_API_URL=http://127.0.0.1:8000/api
+```
 
-## Security Vulnerabilities
+```bash
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Ouvrez `http://127.0.0.1:5173`. Ce port figure dans la configuration CORS de Laravel. `--strictPort` signale un port occupé afin que l'origine reste celle attendue.
 
-## License
+## Cookies et CSRF
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+React appelle Laravel via Axios avec les cookies activés. Avant la connexion, Axios appelle `http://127.0.0.1:8000/sanctum/csrf-cookie`, puis envoie le jeton CSRF dans l'en-tête `X-XSRF-TOKEN` de la requête de connexion. Laravel authentifie la SPA avec le guard `web`, retrouve la session via son cookie et la stocke dans MySQL.
+
+Utilisez `127.0.0.1` pour les deux serveurs. Le domaine de cookie `null` le limite à cet hôte. CORS autorise l'origine Vite avec les cookies et Sanctum reconnaît cette origine pour activer les sessions et la vérification CSRF sur les routes API.
