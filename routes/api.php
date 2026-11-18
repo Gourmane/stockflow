@@ -1,22 +1,22 @@
-
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ProductController;
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\StockMovementController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\StockMovementController;
+use Illuminate\Support\Facades\Route;
 
 // Public
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:login');
 
-// Authenticated users
-Route::middleware(['auth:sanctum', 'active'])->group(function () {
+// Sanctum handles cookies and CSRF; the web guard accepts sessions only.
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:web');
+
+Route::middleware(['auth:web', 'active'])->group(function () {
 
     Route::get('/me', [AuthController::class, 'me']);
-    Route::post('/logout', [AuthController::class, 'logout']);
 
     // Products - Read
     Route::get('/products', [ProductController::class, 'index']);
