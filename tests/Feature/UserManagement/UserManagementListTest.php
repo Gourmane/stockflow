@@ -9,7 +9,7 @@ pest()->use(RefreshDatabase::class, RecordsUserManagementResponses::class);
 it('lists only employees in ascending name order with an exact public field set', function () {
     $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
     User::factory()->create(['role' => 'admin', 'is_active' => false]);
-    $this->authenticateApiAs($admin);
+    $this->actingAs($admin, 'web');
 
     $last = User::factory()->create(['name' => 'Zara', 'role' => 'employee', 'is_active' => true]);
     $first = User::factory()->create(['name' => 'Amine', 'role' => 'employee', 'is_active' => false]);

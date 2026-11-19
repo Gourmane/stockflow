@@ -7,7 +7,7 @@ use Tests\Feature\UserManagement\RecordsUserManagementResponses;
 pest()->use(RefreshDatabase::class, RecordsUserManagementResponses::class);
 
 beforeEach(function () {
-    $this->authenticateApiAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+    $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'web');
     $this->employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
 });
 

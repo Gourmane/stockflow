@@ -1,4 +1,3 @@
-
 <?php
 
 namespace Database\Seeders;
@@ -8,19 +7,18 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
-
-//public function run(): void
-    //{
-      //  User::updateOrCreate(
-         //   ['email' => 'admin@stockflow.test'],
-          //  [
-           //     'name' => 'StockFlow Admin',
-           //     'password' => 'Admin@123456',
-           //     'role' => 'admin',
-           //     'is_active' => true,
-             // ]
-        //);
-   // }
+// public function run(): void
+// {
+//  User::updateOrCreate(
+//   ['email' => 'admin@stockflow.test'],
+//  [
+//     'name' => 'StockFlow Admin',
+//     'password' => 'Admin@123456',
+//     'role' => 'admin',
+//     'is_active' => true,
+// ]
+// );
+// }
 
 class AdminUserSeeder extends Seeder
 {
@@ -31,6 +29,7 @@ class AdminUserSeeder extends Seeder
             $this->command->warn(
                 'An admin already exists. No changes made.'
             );
+
             return;
         }
 
@@ -81,6 +80,3 @@ class AdminUserSeeder extends Seeder
         $this->command->info('Admin created successfully.');
     }
 }
-
-
-

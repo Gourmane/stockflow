@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ProductController;
@@ -17,6 +18,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:web'
 Route::middleware(['auth:web', 'active'])->group(function () {
 
     Route::get('/me', [AuthController::class, 'me']);
+    Route::get('/dashboard', DashboardController::class);
 
     // Products - Read
     Route::get('/products', [ProductController::class, 'index']);
