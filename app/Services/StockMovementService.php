@@ -6,13 +6,15 @@ use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class StockMovementService
 {
     public const int MAX_QUANTITY = 4_294_967_295;
 
-    /** @param array{product_id: int|string, type: 'in'|'out', quantity: int|string, note?: string|null} $data */
+    /** @param array{product_id: int|string, type: 'in'|'out', quantity: int|string, note?: string|null, idempotency_key?: string} $data */
     public function create(array $data, User $user): StockMovement
     {
         $quantity = $data['quantity'];
@@ -26,10 +28,35 @@ class StockMovementService
             ]);
         }
 
-        return DB::transaction(function () use ($data, $user, $quantity) {
+        $idempotencyKey = strtolower($data['idempotency_key'] ?? (string) Str::uuid());
+        $note = $data['note'] ?? null;
+
+        return DB::transaction(function () use ($data, $user, $quantity, $idempotencyKey, $note) {
             $product = Product::query()
                 ->lockForUpdate()
                 ->findOrFail($data['product_id']);
+
+            // Claim the key before checking current stock, which may have changed since the first request.
+            $movement = StockMovement::query()->createOrFirst([
+                'user_id' => $user->id,
+                'idempotency_key' => $idempotencyKey,
+            ], [
+                'product_id' => $product->id,
+                'type' => $data['type'],
+                'quantity' => $quantity,
+                'note' => $note,
+            ]);
+
+            if (! $movement->wasRecentlyCreated) {
+                if ($movement->product_id !== $product->id
+                    || $movement->type !== $data['type']
+                    || $movement->quantity !== $quantity
+                    || $movement->note !== $note) {
+                    throw new ConflictHttpException('This idempotency key was already used for a different stock movement.');
+                }
+
+                return $movement;
+            }
 
             if (! $product->is_active) {
                 throw ValidationException::withMessages([
@@ -57,13 +84,7 @@ class StockMovementService
 
             $product->save();
 
-            return StockMovement::create([
-                'product_id' => $product->id,
-                'user_id' => $user->id,
-                'type' => $data['type'],
-                'quantity' => $quantity,
-                'note' => $data['note'] ?? null,
-            ]);
+            return $movement;
         }, 3);
     }
 }

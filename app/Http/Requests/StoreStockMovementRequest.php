@@ -19,6 +19,7 @@ class StoreStockMovementRequest extends FormRequest
             'type' => ['required', 'in:in,out'],
             'quantity' => ['required', 'integer', 'min:1', 'max:'.StockMovementService::MAX_QUANTITY],
             'note' => ['nullable', 'string', 'max:1000'],
+            'idempotency_key' => ['sometimes', 'required', 'uuid'],
         ];
     }
 }

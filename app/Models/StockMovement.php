@@ -13,6 +13,11 @@ class StockMovement extends Model
         'type',
         'quantity',
         'note',
+        'idempotency_key',
+    ];
+
+    protected $hidden = [
+        'idempotency_key',
     ];
 
     public function product(): BelongsTo
