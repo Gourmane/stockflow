@@ -1,10 +1,12 @@
 <?php
 
+use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Str;
 
 pest()->use(RefreshDatabase::class);
 
@@ -51,13 +53,9 @@ it('uses the logged-in session as the author and applies movements to an empty p
     $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
     $otherUser = User::factory()->create();
     $product = $this->createProduct();
-    $this->withHeader('Referer', 'http://localhost');
-
-    $login = $this->postJson('/api/login', ['email' => $employee->email, 'password' => 'password']);
-    $cookieName = config('session.cookie');
-    $login->assertOk()->assertCookie($cookieName);
-    $this->app['auth']->forgetGuards();
-    $this->withCredentials()->withUnencryptedCookie($cookieName, $login->getCookie($cookieName, false)->getValue());
+    $this->useStatefulSpaRequests();
+    $login = $this->loginThroughSpa($employee);
+    $this->replaySpaSession($login);
 
     $movement = ['product_id' => $product->id, 'type' => 'in', 'quantity' => 10];
     $this->postJson('/api/stock-movements', $movement + ['user_id' => $otherUser->id])
@@ -218,15 +216,13 @@ it('rejects guests and inactive accounts without writing inventory or history', 
     $this->assertDatabaseEmpty('stock_movements');
 });
 
-it('rolls back the product update when MySQL rejects the movement insert', function () {
+it('keeps the stock and history unchanged when MySQL rejects the movement insert', function () {
     Exceptions::fake();
     $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
     $this->actingAs($employee, 'web');
     $product = $this->createProduct();
     $openingMovement = $this->recordOpeningStock($product, $employee, 8);
-    $quantityBeforeInsert = null;
-    StockMovement::creating(function (StockMovement $movement) use ($product, &$quantityBeforeInsert): void {
-        $quantityBeforeInsert = $product->fresh()->quantity;
+    StockMovement::creating(function (StockMovement $movement): void {
         $movement->quantity = 0;
     });
 
@@ -234,7 +230,6 @@ it('rolls back the product update when MySQL rejects the movement insert', funct
         ->assertServerError()
         ->assertJsonStructure(['message']);
 
-    expect($quantityBeforeInsert)->toBe(12);
     Exceptions::assertReported(fn (QueryException $exception): bool => str_contains(
         $exception->getMessage(),
         'chk_stock_movements_quantity',
@@ -242,4 +237,117 @@ it('rolls back the product update when MySQL rejects the movement insert', funct
     $this->assertDatabaseHas('products', ['id' => $product->id, 'quantity' => 8]);
     $this->assertDatabaseHas('stock_movements', $openingMovement->getAttributes());
     $this->assertDatabaseCount('stock_movements', 1);
+});
+
+it('rolls back a history row claimed before a stock update fails', function () {
+    Exceptions::fake();
+    $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
+    $this->actingAs($employee, 'web');
+    $product = $this->createProduct();
+    $key = (string) Str::uuid();
+    $historyExistedBeforeFailure = false;
+    $failure = new RuntimeException('Simulated failure while saving the stock balance.');
+
+    Product::updating(function (Product $updatingProduct) use ($key, $failure, &$historyExistedBeforeFailure): void {
+        $historyExistedBeforeFailure = StockMovement::query()
+            ->where('product_id', $updatingProduct->id)
+            ->where('idempotency_key', $key)
+            ->exists();
+
+        throw $failure;
+    });
+
+    $this->postJson('/api/stock-movements', [
+        'product_id' => $product->id, 'type' => 'in', 'quantity' => 4, 'idempotency_key' => $key,
+    ])->assertServerError();
+
+    expect($historyExistedBeforeFailure)->toBeTrue();
+    Exceptions::assertReported(fn (RuntimeException $exception): bool => $exception === $failure);
+    $this->assertDatabaseHas('products', ['id' => $product->id, 'quantity' => 0]);
+    $this->assertDatabaseEmpty('stock_movements');
+});
+
+it('replays a successful withdrawal without consuming stock twice', function () {
+    $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
+    $this->actingAs($employee, 'web');
+    $product = $this->createProduct();
+    $this->recordOpeningStock($product, $employee, 5);
+    $payload = [
+        'product_id' => $product->id,
+        'type' => 'out',
+        'quantity' => 5,
+        'note' => 'Stock transfer',
+        'idempotency_key' => (string) Str::uuid(),
+    ];
+
+    $creation = $this->postJson('/api/stock-movements', $payload)->assertCreated();
+    $this->postJson('/api/stock-movements', $payload)->assertCreated()
+        ->assertJsonPath('data.id', $creation->json('data.id'));
+
+    $this->assertDatabaseHas('products', ['id' => $product->id, 'quantity' => 0]);
+    $this->assertDatabaseHas('stock_movements', $payload + ['id' => $creation->json('data.id'), 'user_id' => $employee->id]);
+    $this->assertDatabaseCount('stock_movements', 2);
+});
+
+it('rejects a conflicting reuse of an idempotency key', function (array $change, bool $differentProduct) {
+    $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
+    $this->actingAs($employee, 'web');
+    $product = $this->createProduct();
+    $otherProduct = $this->createProduct();
+    $payload = [
+        'product_id' => $product->id,
+        'type' => 'in',
+        'quantity' => 5,
+        'note' => 'Opening stock',
+        'idempotency_key' => (string) Str::uuid(),
+    ];
+    $this->postJson('/api/stock-movements', $payload)->assertCreated();
+
+    $conflicting = $differentProduct ? ['product_id' => $otherProduct->id] : $change;
+    $this->postJson('/api/stock-movements', $conflicting + $payload)->assertConflict();
+
+    $this->assertDatabaseCount('stock_movements', 1);
+    $this->assertDatabaseHas('stock_movements', $payload + ['user_id' => $employee->id]);
+    $this->assertDatabaseHas('products', ['id' => $product->id, 'quantity' => 5]);
+    $this->assertDatabaseHas('products', ['id' => $otherProduct->id, 'quantity' => 0]);
+})->with([
+    'quantity' => [['quantity' => 6], false],
+    'type' => [['type' => 'out'], false],
+    'note' => [['note' => 'Another note'], false],
+    'product' => [[], true],
+]);
+
+it('scopes idempotency keys to the author', function () {
+    $firstEmployee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
+    $secondEmployee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
+    $product = $this->createProduct();
+    $payload = [
+        'product_id' => $product->id, 'type' => 'in', 'quantity' => 5, 'idempotency_key' => (string) Str::uuid(),
+    ];
+
+    $first = $this->actingAs($firstEmployee, 'web')->postJson('/api/stock-movements', $payload)->assertCreated();
+    $second = $this->actingAs($secondEmployee, 'web')->postJson('/api/stock-movements', $payload)->assertCreated();
+
+    expect($second->json('data.id'))->not->toBe($first->json('data.id'));
+    $this->assertDatabaseHas('stock_movements', $payload + ['user_id' => $firstEmployee->id]);
+    $this->assertDatabaseHas('stock_movements', $payload + ['user_id' => $secondEmployee->id]);
+    $this->assertDatabaseHas('products', ['id' => $product->id, 'quantity' => 10]);
+});
+
+it('releases the idempotency key from a rolled back withdrawal', function () {
+    $employee = User::factory()->create(['role' => 'employee', 'is_active' => true]);
+    $this->actingAs($employee, 'web');
+    $product = $this->createProduct();
+    $payload = [
+        'product_id' => $product->id, 'type' => 'out', 'quantity' => 5, 'idempotency_key' => (string) Str::uuid(),
+    ];
+
+    $this->postJson('/api/stock-movements', $payload)->assertUnprocessable();
+    $this->assertDatabaseMissing('stock_movements', ['idempotency_key' => $payload['idempotency_key']]);
+
+    $this->recordOpeningStock($product, $employee, 7);
+    $this->postJson('/api/stock-movements', $payload)->assertCreated();
+    $this->assertDatabaseHas('stock_movements', $payload + ['user_id' => $employee->id]);
+    $this->assertDatabaseHas('products', ['id' => $product->id, 'quantity' => 2]);
+    $this->assertDatabaseCount('stock_movements', 2);
 });

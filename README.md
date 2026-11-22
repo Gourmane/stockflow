@@ -47,3 +47,28 @@ Ouvrez `http://127.0.0.1:5173`. Ce port figure dans la configuration CORS de Lar
 React appelle Laravel via Axios avec les cookies activés. Avant la connexion, Axios appelle `http://127.0.0.1:8000/sanctum/csrf-cookie`, puis envoie le jeton CSRF dans l'en-tête `X-XSRF-TOKEN` de la requête de connexion. Laravel authentifie la SPA avec le guard `web`, retrouve la session via son cookie et la stocke dans MySQL.
 
 Utilisez `127.0.0.1` pour les deux serveurs. Le domaine de cookie `null` le limite à cet hôte. CORS autorise l'origine Vite avec les cookies et Sanctum reconnaît cette origine pour activer les sessions et la vérification CSRF sur les routes API.
+
+## Tests Backend
+
+Utilisez PHP 8.5 avec `pdo_mysql`, Composer 2 et une instance MySQL 8.0 dédiée aux tests. Les Feature Tests réinitialisent le schéma de test. Utilisez un schéma jetable `stockflow_test` et un compte `stockflow_test` sans rôle ni privilège hors de ce schéma.
+
+1. Depuis le dépôt Backend, installez les versions du verrou avec `composer install --no-interaction`.
+2. Sur une instance réservée aux tests, créez le schéma jetable et le compte dédié avec les droits ci-dessous. Si `.env.testing` est absent, créez-le à partir de `.env.testing.example` avec `Copy-Item .env.testing.example .env.testing` sous PowerShell. Renseignez l'hôte TCP, le port et le mot de passe du compte de test dans `.env.testing`. Le runner génère sa clé de session.
+3. Vérifiez d'abord que le couple hôte et port correspond à l'instance dédiée, par exemple en contrôlant son processus et son répertoire de données sur la machine qui l'héberge. Confirmez ensuite l'identité du serveur et les droits avec le compte de test. Le résultat doit indiquer le port attendu, le schéma et le compte `stockflow_test`, et aucun rôle actif.
+
+Le port `43317` était celui de l'instance temporaire arrêtée après la validation. Pour une nouvelle exécution, renseignez le port de l'instance dédiée réellement disponible. Évitez `3306` tant que vous n'avez pas établi que ce port dessert une instance réservée aux tests. Un port ou un nom de schéma ne suffit pas à établir l'isolation. Vérifiez aussi que les variables `DB_HOST`, `DB_PORT` et `DB_PASSWORD` héritées par le processus correspondent à l'instance de test, car elles peuvent prendre le pas sur `.env.testing`.
+
+```bash
+mysql --no-defaults --protocol=TCP --host=HOTE_TEST --port=PORT_TEST --user=stockflow_test --password --database=stockflow_test -e "SELECT VERSION(), @@port, DATABASE(), CURRENT_USER(), CURRENT_ROLE(), @@partial_revokes; SHOW GRANTS;"
+```
+
+Le compte nécessite `SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, REFERENCES, INDEX, ALTER` sur le schéma. Avec `partial_revokes=OFF`, MySQL traite le caractère `_` comme un caractère générique dans les droits au niveau du schéma. La portée du `GRANT` doit alors être `` `stockflow\_test`.* ``. Avec `partial_revokes=ON`, utilisez `` `stockflow_test`.* ``. Le garde-fou vérifie ces droits avant les migrations Feature. [Documentation MySQL sur GRANT](https://dev.mysql.com/doc/refman/8.0/en/grant.html)
+
+```bash
+php vendor/bin/pest --testsuite=Unit
+php vendor/bin/pest
+```
+
+Exécutez la suite Feature en série sur le schéma. Les tests de session utilisent la table `sessions` de MySQL et vérifient le rejeu des cookies. Les scénarios CSRF activent explicitement le middleware pendant les requêtes Laravel de test.
+
+Pour GitHub Actions, le job Backend doit disposer de PHP 8.5, de `pdo_mysql`, de Composer 2 et d'un client MySQL pour la vérification préalable. Prévoyez une instance MySQL 8.0 et un schéma jetables par job. Créez `.env.testing` à partir du modèle dans l'espace de travail du runner, fournissez le mot de passe dédié via les secrets du job et exécutez Pest avec une configuration Laravel sans cache. Le job Frontend utilise la version de Node.js documentée dans son README et exécute `npm ci`, `npm test`, `npm run test:types` et `npm run build`. Les appels HTTP des tests Frontend sont simulés.

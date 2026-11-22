@@ -1,14 +1,11 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Contracts\Encryption\Encrypter;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\Feature\UserManagement\RecordsUserManagementResponses;
-use Tests\Feature\UserManagement\UsesUserManagementSessions;
 
-pest()->use(RefreshDatabase::class, RecordsUserManagementResponses::class, UsesUserManagementSessions::class);
+pest()->use(RefreshDatabase::class, RecordsUserManagementResponses::class);
 
 beforeEach(function () {
     $this->admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
@@ -133,31 +130,25 @@ it('rejects a password without confirmation', function () {
 });
 
 it('creates an admin through the SPA session and requires CSRF verification', function () {
-    $this->useStatefulUserManagementRequests();
-    $this->app->bind(ValidateCsrfToken::class, fn ($app) => new class($app, $app->make(Encrypter::class)) extends ValidateCsrfToken
-    {
-        protected function runningUnitTests(): bool
-        {
-            return false;
-        }
-    });
-    $this->replayUserManagementSession();
+    $this->useStatefulSpaRequests();
+    $this->enforceSpaCsrf();
+    $this->replaySpaSession();
 
     $csrf = $this->get('/sanctum/csrf-cookie')->assertNoContent();
-    $this->replayUserManagementSession($csrf);
+    $this->replaySpaSession($csrf);
     $login = $this->postJson('/api/login', ['email' => $this->admin->email, 'password' => 'password'], [
         'X-XSRF-TOKEN' => $csrf->getCookie('XSRF-TOKEN', decrypt: false)->getValue(),
     ])->assertOk()->assertJsonPath('user.id', $this->admin->id);
 
-    $this->replayUserManagementSession($login);
+    $this->replaySpaSession($login);
     $this->getJson('/api/dashboard')->assertOk()->assertJsonPath('total_products', 0);
 
     $payload = $this->userPayload + ['role' => 'admin'];
-    $this->replayUserManagementSession($login);
+    $this->replaySpaSession($login);
     $this->postJson('/api/users', $payload)->assertStatus(419);
     $this->assertDatabaseCount('users', 1);
 
-    $this->replayUserManagementSession($login);
+    $this->replaySpaSession($login);
     $this->postJson('/api/users', $payload, [
         'X-XSRF-TOKEN' => $login->getCookie('XSRF-TOKEN', decrypt: false)->getValue(),
     ])->assertCreated()->assertJsonPath('data.role', 'admin');

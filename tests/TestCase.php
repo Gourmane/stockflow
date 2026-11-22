@@ -13,31 +13,19 @@ use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
 {
+    use InteractsWithSpa;
+
     public function createApplication(): Application
     {
-        $app = parent::createApplication();
-        $config = $app['config'];
-        $connection = $config->get('database.connections.mysql');
-
-        if (! $app->environment('testing')
-            || $config->get('database.default') !== 'mysql'
-            || $connection['driver'] !== 'mysql'
-            || $connection['host'] !== '127.0.0.1'
-            || (int) $connection['port'] !== 33316
-            || $connection['database'] !== 'stockflow_test'
-            || $connection['username'] !== 'stockflow_test'
-            || ! empty($connection['url'])
-            || ! empty($connection['unix_socket'])
-        ) {
-            throw new RuntimeException('Feature tests require stockflow_test on the isolated MySQL instance at 127.0.0.1:33316.');
+        if (! is_file(dirname(__DIR__).'/.env.testing')) {
+            throw new RuntimeException('Copy .env.testing.example to .env.testing and configure the isolated MySQL instance.');
         }
 
-        return $app;
-    }
+        $app = parent::createApplication();
+        IsolatedMySql::verify($app);
+        $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
 
-    protected function authenticateApiAs(User $user): void
-    {
-        $this->withToken($user->createToken('feature-test')->plainTextToken);
+        return $app;
     }
 
     protected function createProduct(?Category $category = null): Product
